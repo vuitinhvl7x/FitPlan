@@ -2,89 +2,52 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import morgan from "morgan"; // Optional: for request logging
-import { sequelize } from "./models/index.js"; // Import sequelize instance from models/index.js
+// ... các import khác
+import { sequelize /* ...các models */ } from "./models/index.js"; // <-- Sửa đường dẫn
+import authRouter from "./routers/authRouter.js"; // <-- Sửa đường dẫn
+// Import các router khác nếu có (ví dụ: userRouter)
+import userRouter from "./routers/userRouter.js"; // <-- Sửa đường dẫn
 
-// Import Routers
-import userRouter from "./routers/userRouter.js";
-// Import other routers as you create them
-// import planRouter from './routers/planRouter.js';
-// import workoutRouter from './routers/workoutRouter.js';
-// import exerciseRouter from './routers/exerciseRouter.js';
-
-dotenv.config(); // Load environment variables from .env file
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// --- Middlewares ---
-app.use(cors()); // Enable Cross-Origin Resource Sharing
-app.use(express.json()); // Parse incoming JSON requests
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded requests (optional, useful for form data)
-if (process.env.NODE_ENV === "development") {
-  // Only use morgan in development
-  app.use(morgan("dev")); // HTTP request logger middleware
-}
+// Middlewares
+app.use(cors());
+app.use(express.json()); // Để parse JSON request body
+// Có thể thêm morgan cho logging: import morgan from 'morgan'; app.use(morgan('dev'));
 
-// --- API Routes ---
-app.get("/api", (req, res) => {
-  // Basic API root check
-  res.json({ message: "Welcome to the FitPlan API!" });
+// Routes
+app.get("/", (req, res) => {
+  res.json("This is home page - FitPlan API");
 });
 
-// Mount Routers with '/api' prefix
-app.use("/api/users", userRouter);
-// Mount other routers here
-// app.use('/api/plans', planRouter);
-// app.use('/api/workouts', workoutRouter); // Example for workout sessions and results
-// app.use('/api/exercises', exerciseRouter); // Example for fetching/managing exercises
+// Sử dụng Auth Router (thêm tiền tố /api/auth)
+app.use("/api/auth", authRouter);
 
-// --- Not Found Handler ---
-// Catch 404 for routes not defined above
-app.use((req, res, next) => {
-  res.status(404).json({ message: "Resource not found on this server." });
-});
+// Sử dụng các router khác (ví dụ)
+app.use("/api/users", userRouter); // Sử dụng userRouter
+// app.use('/api/plans', planRouter); // Sẽ tạo sau
 
-// --- Global Error Handling Middleware ---
-// Must be defined last, after all other app.use() and routes calls
+// Error handling middleware (nên đặt cuối cùng)
 app.use((err, req, res, next) => {
-  console.error("Unhandled Error:", err.stack || err); // Log the full error stack
-
-  // Default error response
-  const statusCode = err.statusCode || 500; // Use error's status code or default to 500
-  const message = err.message || "Internal Server Error";
-
-  // Send JSON error response
-  res.status(statusCode).json({
-    status: "error",
-    statusCode,
-    message,
-    // Optionally include stack trace in development
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
-  });
+  console.error(err.stack);
+  res.status(500).send("Something broke!");
 });
 
-// --- Start Server and Connect DB ---
+// Khởi động server và đồng bộ hóa cơ sở dữ liệu
 async function startServer() {
   try {
-    // Test the database connection
-    await sequelize.authenticate();
-    console.log("Database connection has been established successfully.");
+    await sequelize.sync(); // Dùng khi dev để cập nhật schema
+    await sequelize.authenticate(); // Chỉ kiểm tra kết nối khi đã ổn định schema
+    console.log("Database connection established.");
 
-    // Sync models (Use with caution, especially in production)
-    await sequelize.sync(); // Creates tables if they don't exist (no alter/force)
-    // await sequelize.sync({ alter: true }); // Checks state and performs necessary changes (dev only)
-    // await sequelize.sync({ force: true }); // Drops all tables and recreates (dev only, data loss!)
-    console.log("Sequelize models synced (if sync was enabled).");
-
-    // Start the Express server
     app.listen(PORT, () => {
-      console.log(`Server is running on http://localhost:${PORT}`);
-      console.log(`API available at http://localhost:${PORT}/api`);
+      console.log(`Server started on http://localhost:${PORT}`);
     });
   } catch (error) {
-    console.error("Unable to start server or connect to the database:", error);
-    process.exit(1); // Exit process with failure code
+    console.error("Unable to start server:", error);
   }
 }
 
