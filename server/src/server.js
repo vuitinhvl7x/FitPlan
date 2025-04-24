@@ -72,8 +72,8 @@ async function startServer() {
     console.log("Database connection has been established successfully.");
 
     // Sync models (Use with caution, especially in production)
-    // await sequelize.sync(); // Creates tables if they don't exist (no alter/force)
-    await sequelize.sync({ alter: true }); // Checks state and performs necessary changes (dev only)
+    await sequelize.sync(); // Creates tables if they don't exist (no alter/force)
+    // await sequelize.sync({ alter: true }); // Checks state and performs necessary changes (dev only)
     // await sequelize.sync({ force: true }); // Drops all tables and recreates (dev only, data loss!)
     console.log("Sequelize models synced (if sync was enabled).");
 
