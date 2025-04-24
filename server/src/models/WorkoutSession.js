@@ -1,6 +1,7 @@
 // src/models/WorkoutSession.js
 import { DataTypes } from "sequelize";
 import sequelize from "../providers/db.js";
+// No need to import TrainingPlan here for definition, only for association in index.js
 
 const WorkoutSession = sequelize.define(
   "WorkoutSession",
@@ -15,7 +16,7 @@ const WorkoutSession = sequelize.define(
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: "training_plans",
+        model: "training_plans", // Reference table name
         key: "id",
       },
       onDelete: "CASCADE", // Delete sessions if plan is deleted
@@ -47,6 +48,8 @@ const WorkoutSession = sequelize.define(
       type: DataTypes.INTEGER,
       allowNull: true,
     },
+    // Removed intensity_level and session_duration from previous version
+    // as duration_planned/actual seem more flexible. Add back if needed.
   },
   {
     tableName: "workout_sessions",

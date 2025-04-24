@@ -15,7 +15,7 @@ const ExerciseResult = sequelize.define(
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: "workout_exercises",
+        model: "workout_exercises", // Reference table name
         key: "id",
       },
       onDelete: "CASCADE",
@@ -25,7 +25,7 @@ const ExerciseResult = sequelize.define(
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: "users",
+        model: "users", // Reference table name
         key: "id",
       },
       onDelete: "CASCADE",
@@ -34,25 +34,30 @@ const ExerciseResult = sequelize.define(
       // Which set this result belongs to
       type: DataTypes.INTEGER,
       allowNull: false,
+      validate: { min: 1 },
     },
     reps_completed: {
       type: DataTypes.INTEGER,
       allowNull: true, // Might be null if only duration is tracked
+      validate: { min: 0 },
     },
     weight_used: {
       // in kg or lbs
       type: DataTypes.FLOAT,
       allowNull: true, // Might be null for bodyweight or cardio
+      validate: { min: 0 },
     },
     duration_completed: {
       // in seconds or minutes
       type: DataTypes.INTEGER,
       allowNull: true, // Might be null if only reps are tracked
+      validate: { min: 0 },
     },
     rating: {
       // Optional: User's perceived difficulty (e.g., 1-5 or RPE)
       type: DataTypes.INTEGER,
       allowNull: true,
+      validate: { min: 1, max: 10 }, // Example RPE scale 1-10
     },
     notes: {
       // User notes specific to this set/result
@@ -65,6 +70,7 @@ const ExerciseResult = sequelize.define(
       defaultValue: DataTypes.NOW,
       allowNull: false,
     },
+    // Removed reps_performed (use reps_completed), weight_used (already present), duration (use duration_completed)
   },
   {
     tableName: "exercise_results",

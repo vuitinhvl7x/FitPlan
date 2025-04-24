@@ -15,7 +15,7 @@ const WorkoutExercise = sequelize.define(
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: "workout_sessions",
+        model: "workout_sessions", // Reference table name
         key: "id",
       },
       onDelete: "CASCADE",
@@ -25,7 +25,7 @@ const WorkoutExercise = sequelize.define(
       type: DataTypes.UUID,
       allowNull: false,
       references: {
-        model: "exercises",
+        model: "exercises", // Reference table name
         key: "id",
       },
       onDelete: "CASCADE", // Or 'SET NULL' if you want to keep the record but remove the exercise link
@@ -38,32 +38,38 @@ const WorkoutExercise = sequelize.define(
     },
     sets_planned: {
       type: DataTypes.INTEGER,
-      allowNull: true,
+      allowNull: true, // Allow null if not applicable (e.g., cardio duration)
+      validate: { min: 0 },
     },
     reps_planned: {
       type: DataTypes.INTEGER,
-      allowNull: true,
+      allowNull: true, // Allow null if not applicable (e.g., timed sets)
+      validate: { min: 0 },
     },
     weight_planned: {
-      // in kg or lbs (ensure consistency)
+      // in kg or lbs (ensure consistency in your app logic)
       type: DataTypes.FLOAT,
       allowNull: true,
+      validate: { min: 0 },
     },
     duration_planned: {
       // in seconds or minutes (for timed exercises like cardio/plank)
       type: DataTypes.INTEGER,
       allowNull: true,
+      validate: { min: 0 },
     },
     rest_period: {
       // Rest period after this exercise in seconds
       type: DataTypes.INTEGER,
       allowNull: true,
+      validate: { min: 0 },
     },
     notes: {
       // Specific notes for this exercise in this workout
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    // Removed is_customized, rest_time from previous version
   },
   {
     tableName: "workout_exercises",
