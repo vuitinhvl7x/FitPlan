@@ -1,8 +1,16 @@
 import express from "express";
+import authenticateToken from "../middlewares/authMiddleware.js";
+import userController from "../controllers/userController.js";
 
 const router = express.Router();
-router.get("/", (req, res) => {
-  res.json("This is user page");
-});
+
+// --- Protected Routes ---
+// Lấy thông tin user hiện tại
+router.get("/me", authenticateToken, userController.getMe);
+
+// Cập nhật thông tin user hiện tại
+router.put("/me", authenticateToken, userController.updateMe);
+
+// Có thể thêm các route khác liên quan đến user ở đây (vd: admin routes)
 
 export default router;

@@ -2,11 +2,12 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import cookieParser from "cookie-parser"; // <-- Import cookie-parser
+import cookieParser from "cookie-parser";
 // ... các import khác
-import { sequelize /* ...các models */ } from "./models/index.js";
+import { sequelize } from "./models/index.js";
 import authRouter from "./routers/authRouter.js";
 import userRouter from "./routers/userRouter.js";
+import profileRouter from "./routers/profileRouter.js"; // <-- Import profileRouter
 
 dotenv.config();
 
@@ -14,21 +15,19 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Middlewares
-app.use(cors()); // Cân nhắc cấu hình CORS chặt chẽ hơn cho production
+app.use(cors());
 app.use(express.json());
-app.use(cookieParser()); // <-- Sử dụng cookie-parser middleware ở đây
+app.use(cookieParser());
 
 // Routes
 app.get("/", (req, res) => {
   res.json("This is home page - FitPlan API");
 });
 
-// Sử dụng Auth Router
+// Sử dụng các Routers
 app.use("/api/auth", authRouter);
-
-// Sử dụng các router khác
 app.use("/api/users", userRouter);
-// app.use('/api/plans', planRouter);
+app.use("/api/profiles", profileRouter); // <-- Sử dụng profileRouter
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -39,7 +38,6 @@ app.use((err, req, res, next) => {
 // Khởi động server và đồng bộ hóa cơ sở dữ liệu
 async function startServer() {
   try {
-    // await sequelize.sync({ alter: true }); // Dùng alter:true cẩn thận hơn sync() khi dev
     await sequelize.authenticate();
     console.log("Database connection established.");
 
