@@ -3,6 +3,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { User, UserProfile } from "../models/index.js"; // Import models cần thiết
 import dotenv from "dotenv";
+import { generateToken } from "../utils/generateToken.js"; // Import hàm generateToken của bạn (giả sử file đặt ở src/utils)
 
 dotenv.config(); // Load biến môi trường
 
@@ -78,17 +79,12 @@ const authController = {
         // Thêm các trường profile khác nếu cần
       });
 
-      // 4. Tạo JWT Token
-      const token = jwt.sign(
-        { id: newUser.id, username: newUser.username }, // Payload - không nên chứa thông tin nhạy cảm
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN || "1h" } // Thời gian hết hạn
-      );
+      // 4. Tạo và gửi JWT Token qua cookie
+      generateToken(newUser.id, res); // Gọi hàm generateToken của bạn
 
-      // 5. Trả về token và thông tin cơ bản (không trả password)
+      // 5. Trả về thông tin cơ bản (không trả password và token trong body)
       res.status(201).json({
         message: "User registered successfully!",
-        token,
         user: {
           // Chỉ trả về thông tin cần thiết, không trả password hash
           id: newUser.id,
@@ -135,17 +131,12 @@ const authController = {
         return res.status(401).json({ message: "Invalid credentials." }); // Sai password
       }
 
-      // 3. Tạo JWT Token
-      const token = jwt.sign(
-        { id: user.id, username: user.username },
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN || "1h" }
-      );
+      // 3. Tạo và gửi JWT Token qua cookie
+      generateToken(user.id, res); // Gọi hàm generateToken của bạn
 
-      // 4. Trả về token và thông tin user
+      // 4. Trả về thông tin user (không trả token trong body)
       res.status(200).json({
         message: "Login successful!",
-        token,
         user: {
           id: user.id,
           fullName: user.fullName,
