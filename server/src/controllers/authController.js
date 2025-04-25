@@ -1,11 +1,11 @@
 // src/controllers/authController.js
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { User, UserProfile } from "../models/index.js"; // Import models cần thiết
+import { User, UserProfile } from "../models/index.js";
 import dotenv from "dotenv";
-import { generateToken } from "../utils/generateToken.js"; // Import hàm generateToken của bạn (giả sử file đặt ở src/utils)
+import { generateToken } from "../utils/generateToken.js";
 
-dotenv.config(); // Load biến môi trường
+dotenv.config();
 
 const authController = {
   // --- Đăng ký ---
@@ -17,17 +17,15 @@ const authController = {
       password,
       gender,
       dateOfBirth, // User fields
-      // Lấy thêm các trường bắt buộc cho UserProfile từ req.body
       activity_level,
       goals,
       experience,
       training_location,
       weight,
-      height, // Profile fields (ví dụ)
-      preferred_training_days, // Optional profile field
+      height, // Profile fields
+      preferred_training_days,
     } = req.body;
 
-    // --- Validation cơ bản (Nên dùng thư viện validation như express-validator sau này) ---
     if (
       !fullName ||
       !username ||
@@ -45,7 +43,6 @@ const authController = {
     }
 
     try {
-      // 1. Kiểm tra User/Email tồn tại
       const existingUser = await User.findOne({ where: { email } });
       if (existingUser) {
         return res.status(409).json({ message: "Email already exists." });
@@ -55,47 +52,39 @@ const authController = {
         return res.status(409).json({ message: "Username already exists." });
       }
 
-      // 2. Tạo User mới (Password đã được hash tự động bởi set() trong model)
       const newUser = await User.create({
-        fullName,
+        full_name: fullName, // Ensure snake_case matches model definition
         username,
         email,
-        password, // Sequelize's set() hook will hash this
+        password,
         gender,
-        dateOfBirth, // Đảm bảo định dạng YYYY-MM-DD
+        date_of_birth: dateOfBirth, // Ensure snake_case matches model definition
       });
 
-      // 3. Tạo UserProfile liên kết với User vừa tạo
-      // Đảm bảo bạn truyền đủ các trường bắt buộc cho UserProfile
       await UserProfile.create({
         user_id: newUser.id,
         activity_level,
         goals,
         experience,
         training_location,
-        weight, // Có thể null nếu allow null trong model
-        height, // Có thể null nếu allow null trong model
-        preferred_training_days, // Sẽ là [] nếu không được cung cấp và có defaultValue
-        // Thêm các trường profile khác nếu cần
+        weight,
+        height,
+        preferred_training_days,
       });
 
-      // 4. Tạo và gửi JWT Token qua cookie
-      generateToken(newUser.id, res); // Gọi hàm generateToken của bạn
+      generateToken(newUser.id, res);
 
-      // 5. Trả về thông tin cơ bản (không trả password và token trong body)
       res.status(201).json({
         message: "User registered successfully!",
         user: {
-          // Chỉ trả về thông tin cần thiết, không trả password hash
           id: newUser.id,
-          fullName: newUser.fullName,
+          fullName: newUser.full_name, // Use snake_case field from model
           username: newUser.username,
           email: newUser.email,
         },
       });
     } catch (error) {
       console.error("Registration Error:", error);
-      // Check for Sequelize validation errors
       if (error.name === "SequelizeValidationError") {
         const messages = error.errors.map((err) => err.message);
         return res
@@ -119,27 +108,27 @@ const authController = {
     }
 
     try {
-      // 1. Tìm user bằng email
       const user = await User.findOne({ where: { email } });
       if (!user) {
-        return res.status(401).json({ message: "Invalid credentials." }); // Không tìm thấy user
+        return res.status(401).json({ message: "Invalid credentials." });
       }
 
-      // 2. So sánh password (dùng bcrypt.compare)
-      const isMatch = await bcrypt.compare(password, user.password); // So sánh password thô với hash trong DB
+      // Use the instance method if available, otherwise use bcrypt directly
+      const isMatch = user.isValidPassword // Check if method exists
+        ? await user.isValidPassword(password)
+        : await bcrypt.compare(password, user.password);
+
       if (!isMatch) {
-        return res.status(401).json({ message: "Invalid credentials." }); // Sai password
+        return res.status(401).json({ message: "Invalid credentials." });
       }
 
-      // 3. Tạo và gửi JWT Token qua cookie
-      generateToken(user.id, res); // Gọi hàm generateToken của bạn
+      generateToken(user.id, res);
 
-      // 4. Trả về thông tin user (không trả token trong body)
       res.status(200).json({
         message: "Login successful!",
         user: {
           id: user.id,
-          fullName: user.fullName,
+          fullName: user.full_name, // Use snake_case field from model
           username: user.username,
           email: user.email,
         },
@@ -149,6 +138,53 @@ const authController = {
       res
         .status(500)
         .json({ message: "Error logging in", error: error.message });
+    }
+  },
+
+  // --- Đăng xuất ---
+  logout: (req, res) => {
+    try {
+      // Xóa cookie 'jwt'
+      res.cookie("jwt", "", {
+        httpOnly: true,
+        expires: new Date(0), // Set ngày hết hạn về quá khứ
+        sameSite: "strict", // Đảm bảo các tùy chọn giống như khi tạo token
+        secure: process.env.NODE_ENV !== "development", // Giống như khi tạo token
+      });
+      res.status(200).json({ message: "Logged out successfully." });
+    } catch (error) {
+      console.error("Logout Error:", error);
+      res
+        .status(500)
+        .json({ message: "Error logging out", error: error.message });
+    }
+  },
+
+  // --- Lấy thông tin User hiện tại ---
+  getMe: async (req, res) => {
+    // Middleware authenticateToken đã xác thực và gắn user vào req.user
+    try {
+      // Lấy thông tin user từ req.user (đã được middleware thêm vào)
+      // Chọn lọc các trường cần trả về, không bao gồm password
+      const userData = {
+        id: req.user.id,
+        fullName: req.user.full_name, // Use snake_case field from model
+        username: req.user.username,
+        email: req.user.email,
+        gender: req.user.gender,
+        dateOfBirth: req.user.date_of_birth, // Use snake_case field from model
+        createdAt: req.user.createdAt,
+        updatedAt: req.user.updatedAt,
+        // Bạn có thể muốn lấy thêm profile ở đây nếu cần
+        // profile: await req.user.getProfile() // Ví dụ nếu có association 'profile'
+      };
+
+      res.status(200).json(userData);
+    } catch (error) {
+      console.error("Get Me Error:", error);
+      res
+        .status(500)
+        .json({ message: "Error fetching user data", error: error.message });
     }
   },
 };
