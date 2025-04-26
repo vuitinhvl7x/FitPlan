@@ -21,6 +21,15 @@ const UserProfile = sequelize.define(
       unique: true, // A user should only have one profile
       onDelete: "CASCADE", // Optional: Delete profile if user is deleted
     },
+    profile_pic_url: {
+      type: DataTypes.STRING,
+      allowNull: true, // Optional field
+      validate: {
+        isUrl: {
+          msg: "Profile picture must be a valid URL",
+        },
+      },
+    },
     activity_level: {
       type: DataTypes.ENUM(
         "Sedentary", // Ít vận động

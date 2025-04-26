@@ -1,5 +1,10 @@
 // src/controllers/profileController.js
 import { UserProfile } from "../models/index.js";
+import {
+  uploadToCloudinary,
+  deleteFromCloudinary,
+  getPublicIdFromUrl,
+} from "../utils/cloudinaryUploader.js";
 
 const profileController = {
   // GET /api/profiles/me - Lấy profile của user hiện tại
@@ -85,6 +90,84 @@ const profileController = {
       res
         .status(500)
         .json({ message: "Error updating user profile", error: error.message });
+    }
+  },
+  updateProfilePicture: async (req, res) => {
+    const userId = req.user.id;
+
+    // 1. Kiểm tra xem có file được upload không (multer đã xử lý và gắn vào req.file)
+    if (!req.file) {
+      return res.status(400).json({ message: "No image file uploaded." });
+    }
+
+    try {
+      // 2. Tìm profile của user
+      const profile = await UserProfile.findOne({ where: { user_id: userId } });
+      if (!profile) {
+        // Mặc dù hiếm khi xảy ra sau authenticateToken, vẫn nên kiểm tra
+        return res.status(404).json({ message: "User profile not found." });
+      }
+
+      // 3. (Optional but Recommended) Xóa ảnh cũ trên Cloudinary nếu có
+      const oldImageUrl = profile.profile_pic_url;
+      if (oldImageUrl) {
+        const publicId = getPublicIdFromUrl(oldImageUrl);
+        if (publicId) {
+          try {
+            console.log(
+              `Attempting to delete old image with public_id: ${publicId}`
+            );
+            await deleteFromCloudinary(publicId);
+            console.log(
+              `Successfully deleted (or skipped deletion of) old image: ${publicId}`
+            );
+          } catch (deleteError) {
+            // Lỗi đã được log trong hàm deleteFromCloudinary, tiếp tục xử lý
+            console.warn(
+              `Could not delete old image ${publicId}. Proceeding with upload.`
+            );
+          }
+        } else {
+          console.warn(
+            `Could not extract public_id from old URL: ${oldImageUrl}`
+          );
+        }
+      }
+
+      // 4. Upload ảnh mới lên Cloudinary
+      const uploadResult = await uploadToCloudinary(
+        req.file.buffer,
+        "profile_pics"
+      ); // Lưu vào folder 'profile_pics'
+
+      // 5. Cập nhật URL ảnh mới vào profile trong DB
+      await profile.update({ profile_pic_url: uploadResult.secure_url });
+
+      // 6. Trả về thông tin profile đã cập nhật (hoặc chỉ URL mới)
+      res.status(200).json({
+        message: "Profile picture updated successfully.",
+        profilePicUrl: uploadResult.secure_url,
+        // profile: profile // Có thể trả về cả profile nếu muốn
+      });
+    } catch (error) {
+      console.error("Update Profile Picture Error:", error);
+      // Phân loại lỗi nếu cần (ví dụ: lỗi Cloudinary, lỗi DB)
+      if (error.message.includes("Cloudinary")) {
+        return res
+          .status(500)
+          .json({ message: "Error uploading image.", error: error.message });
+      }
+      if (error.name === "SequelizeValidationError") {
+        const messages = error.errors.map((err) => err.message);
+        return res.status(400).json({
+          message: "Validation Error updating profile",
+          errors: messages,
+        });
+      }
+      res.status(500).json({
+        message: "Error updating profile picture.",
+        error: error.message,
+      });
     }
   },
 };

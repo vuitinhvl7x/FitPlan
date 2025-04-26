@@ -38,6 +38,7 @@ app.use((err, req, res, next) => {
 // Khởi động server và đồng bộ hóa cơ sở dữ liệu
 async function startServer() {
   try {
+    sequelize.sync();
     await sequelize.authenticate();
     console.log("Database connection established.");
 
