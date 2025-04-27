@@ -16,7 +16,7 @@ FitPlan API là một dự án API được xây dựng bằng Node.js và Expre
 
 ## Cài đặt
 
-1. Clone dự án về máy của bạn bằng cách chạy lệnh `git clone https://github.com/username/fitplan-api.git`.
+1. Clone dự án về máy của bạn bằng cách chạy lệnh `git clone https://github.com/vuitinhvl7x/FitPlan.git`.
 2. Di chuyển vào thư mục `server` bằng cách chạy lệnh `cd server`.
 3. Cài đặt các dependencies bằng cách chạy lệnh `npm install`.
 4. Tạo file `.env` trong thư mục `server` và cấu hình các biến môi trường cần thiết.
@@ -51,4 +51,4 @@ Tài liệu API sẽ được cung cấp trong tương lai.
 
 ## Liên hệ
 
-Nếu bạn có bất kỳ câu hỏi hoặc cần hỗ trợ, vui lòng liên hệ với chúng tôi qua email [email của bạn].
+Nếu bạn có bất kỳ câu hỏi hoặc cần hỗ trợ, vui lòng liên hệ với chúng tôi qua email xuanhajforwork@gmail.com.
