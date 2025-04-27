@@ -4,7 +4,7 @@ import {
   User,
   UserProfile,
   Exercise,
-  TrainingPlan,
+  TrainingPlan, // <-- Đảm bảo TrainingPlan được import
   WorkoutSession,
   WorkoutExercise,
 } from "../models/index.js";
@@ -84,10 +84,35 @@ const planGeneratorService = {
       });
 
       if (!user || !user.profile) {
+        // Rollback transaction before throwing error
+        await transaction.rollback();
         throw new Error("User or User Profile not found.");
       }
 
       const userProfile = user.profile;
+
+      // --- LOGIC KIỂM TRA PLAN ACTIVE ĐÃ ĐƯỢC SỬA ---
+      const existingActivePlan = await TrainingPlan.findOne({
+        where: {
+          user_id: userId,
+          status: "Active",
+        },
+        transaction, // Sử dụng transaction
+      });
+
+      if (existingActivePlan) {
+        // KHÔNG rollback ở đây. Chỉ ném lỗi.
+        console.warn(
+          `User ${userId} already has an active plan (ID: ${existingActivePlan.id}). Generation request blocked.`
+        );
+        // Ném một lỗi cụ thể để controller có thể nhận biết và trả về status code 400/409
+        const activePlanError = new Error(
+          "You already have an active training plan. Please complete or archive it before generating a new one."
+        );
+        activePlanError.status = 400; // Gợi ý status code cho controller
+        throw activePlanError;
+      }
+      // --- KẾT THÚC LOGIC KIỂM TRA ---
 
       // 2. Determine available equipment based on training location
       const location = userProfile.training_location
@@ -120,6 +145,8 @@ const planGeneratorService = {
       });
 
       if (availableExercises.length === 0) {
+        // Rollback transaction before throwing error
+        await transaction.rollback();
         throw new Error(
           `No exercises found in the database matching the user's training location (${userProfile.training_location}).`
         );
@@ -155,73 +182,76 @@ const planGeneratorService = {
       ] || { min: 3, max: 4 }; // Default if activity level is unexpected
 
       const prompt = `
-Generate a 1-week personalized training plan in JSON format.
-
-User Profile:
-- Goal: ${userProfile.goals}
-- Experience Level: ${userProfile.experience}
-- Activity Level: ${userProfile.activity_level}
-- Training Location: ${userProfile.training_location}
-- Preferred Training Days: ${
-        userProfile.preferred_training_days &&
-        userProfile.preferred_training_days.length > 0
-          ? userProfile.preferred_training_days.join(", ")
-          : "Any"
-      }
-- Weight: ${userProfile.weight || "N/A"} kg
-- Height: ${userProfile.height || "N/A"} cm
-- Wants Pre-Workout Info: ${userProfile.wants_pre_workout_info ? "Yes" : "No"}
-
-Plan Requirements:
-- Duration: 1 week, starting from today.
-- Frequency: Suggest a training frequency appropriate for the user's activity level (${
-        userProfile.activity_level
-      }), ideally scheduling between ${suggestedFrequency.min} and ${
+  Generate a 1-week personalized training plan in JSON format.
+  
+  User Profile:
+  - Goal: ${userProfile.goals}
+  - Experience Level: ${userProfile.experience}
+  - Activity Level: ${userProfile.activity_level}
+  - Training Location: ${userProfile.training_location}
+  - Preferred Training Days: ${
+    userProfile.preferred_training_days &&
+    userProfile.preferred_training_days.length > 0
+      ? userProfile.preferred_training_days.join(", ")
+      : "Any"
+  }
+  - Weight: ${userProfile.weight || "N/A"} kg
+  - Height: ${userProfile.height || "N/A"} cm
+  - Wants Pre-Workout Info: ${userProfile.wants_pre_workout_info ? "Yes" : "No"}
+  
+  Plan Requirements:
+  - Duration: 1 week, starting from today.
+  - Frequency: Suggest a training frequency appropriate for the user's activity level (${
+    userProfile.activity_level
+  }), ideally scheduling between ${suggestedFrequency.min} and ${
         suggestedFrequency.max
       } sessions per week. Prioritize preferred days if specified.
-- Session Duration: Suggest appropriate duration for each session (e.g., 30-60 minutes).
-- Focus: Align the plan structure, exercise selection, sets, reps, and rest periods with the user's primary goal (${
-        userProfile.goals
-      }) and experience level (${userProfile.experience}).
-- Exercises: ONLY use exercises from the list provided below. Provide the EXACT name from the list if possible. If an exact match isn't suitable, suggest a very common variation that is likely to be in the list or can be easily mapped. If a suitable exercise cannot be found for a planned muscle group/body part from the list, you can suggest "Rest" or "Cardio (choose activity)".
-- Pre-Workout Notes: If the user wants pre-workout info, include a brief note or suggestion at the beginning of each session's notes.
-- Output Format: JSON object.
-
-Available Exercises (Name, Target Muscle, Body Part, Equipment, Secondary Muscles):
-${exerciseListForPrompt}
-
-JSON Output Structure:
-{
-  "planName": "string", // A suggested name for the plan (e.g., "Beginner Weight Loss Plan")
-  "description": "string", // A brief description of the plan
-  "sessions": [
-    {
-      "day": "string", // e.g., "Monday", "Tuesday", etc.
-      "name": "string", // e.g., "Upper Body Workout", "Cardio Session", "Rest Day"
-      "exercises": [ // Array of exercises for this session. Can be empty for Rest Day.
-        {
-          "exerciseName": "string", // The name of the exercise (must be from or very similar to the available list)
-          "sets": "number | string | null", // e.g., 3, "3-4", null for cardio
-          "reps": "number | string | null", // e.g., 10, "8-12", null for timed
-          "weight": "string | null", // e.g., "Bodyweight", "50kg", "Adjust as needed", null
-          "duration": "number | null", // Duration in seconds for timed exercises, null otherwise
-          "rest": "number | null", // Rest period in seconds after the exercise/set, null if not applicable
-          "notes": "string | null" // Specific notes for this exercise in this session
-        }
-        // ... more exercises for this session
-      ],
-      "notes": "string | null" // General notes for the session (e.g., warm-up, cool-down, pre-workout info)
-    }
-    // ... more sessions for the week (7 sessions total for a 1-week plan)
-  ]
-}
-
-Ensure the output is valid JSON and contains ONLY the JSON object. Do not include any introductory or concluding text outside the JSON.
-`;
+  - Session Duration: Suggest appropriate duration for each session (e.g., 30-60 minutes).
+  - Focus: Align the plan structure, exercise selection, sets, reps, and rest periods with the user's primary goal (${
+    userProfile.goals
+  }) and experience level (${userProfile.experience}).
+  - Exercises: ONLY use exercises from the list provided below. Provide the EXACT name from the list if possible. If an exact match isn't suitable, suggest a very common variation that is likely to be in the list or can be easily mapped. If a suitable exercise cannot be found for a planned muscle group/body part from the list, you can suggest "Rest" or "Cardio (choose activity)".
+  - Pre-Workout Notes: If the user wants pre-workout info, include a brief note or suggestion at the beginning of each session's notes.
+  - Output Format: JSON object.
+  
+  Available Exercises (Name, Target Muscle, Body Part, Equipment, Secondary Muscles):
+  ${exerciseListForPrompt}
+  
+  JSON Output Structure:
+  {
+    "planName": "string", // A suggested name for the plan (e.g., "Beginner Weight Loss Plan")
+    "description": "string", // A brief description of the plan
+    "sessions": [
+      {
+        "day": "string", // e.g., "Monday", "Tuesday", etc.
+        "name": "string", // e.g., "Upper Body Workout", "Cardio Session", "Rest Day"
+        "exercises": [ // Array of exercises for this session. Can be empty for Rest Day.
+          {
+            "exerciseName": "string", // The name of the exercise (must be from or very similar to the available list)
+            "sets": "number | string | null", // e.g., 3, "3-4", null for cardio
+            "reps": "number | string | null", // e.g., 10, "8-12", null for timed
+            "weight": "string | null", // e.g., "Bodyweight", "50kg", "Adjust as needed", null
+            "duration": "number | null", // Duration in seconds for timed exercises, null otherwise
+            "rest": "number | null", // Rest period in seconds after the exercise/set, null if not applicable
+            "notes": "string | null" // Specific notes for this exercise in this session
+          }
+          // ... more exercises for this session
+        ],
+        "notes": "string | null" // General notes for the session (e.g., warm-up, cool-down, pre-workout info)
+      }
+      // ... more sessions for the week (7 sessions total for a 1-week plan)
+    ]
+  }
+  
+  Ensure the output is valid JSON and contains ONLY the JSON object. Do not include any introductory or concluding text outside the JSON.
+  `;
 
       console.log("Prompt constructed. Calling Gemini...");
 
       // 6. Call Gemini API
+      // Lưu ý: Gọi API ngoài transaction nếu API call mất nhiều thời gian
+      // hoặc nếu bạn muốn transaction chỉ bao gồm các thao tác DB.
+      // Tuy nhiên, để đơn giản, ta vẫn giữ trong try block.
       const planJson = await geminiService.generateJson(prompt);
 
       // 7. Validate and Save Plan to Database
@@ -231,6 +261,8 @@ Ensure the output is valid JSON and contains ONLY the JSON object. Do not includ
         !Array.isArray(planJson.sessions) ||
         planJson.sessions.length === 0
       ) {
+        // Rollback transaction before throwing error
+        await transaction.rollback();
         throw new Error("Gemini returned an invalid or empty plan structure.");
       }
 
@@ -246,7 +278,7 @@ Ensure the output is valid JSON and contains ONLY the JSON object. Do not includ
             planJson.description || `1-week plan for ${userProfile.goals}`,
           start_date: startDate,
           end_date: endDate,
-          status: "Active",
+          status: "Active", // Đặt trạng thái là Active
           is_customized: false, // Generated plans are not customized initially
         },
         { transaction }
@@ -285,7 +317,7 @@ Ensure the output is valid JSON and contains ONLY the JSON object. Do not includ
             training_plan_id: createdPlan.id,
             name: sessionData.name || `${sessionData.day} Workout`,
             date: sessionDate, // Use the calculated date
-            status: "Planned",
+            status: "Planned", // Trạng thái ban đầu của session
             notes: sessionData.notes,
             // duration_planned could be parsed from sessionData if Gemini provides it
           },
@@ -356,8 +388,10 @@ Ensure the output is valid JSON and contains ONLY the JSON object. Do not includ
       console.log("Plan generation and saving complete.");
       return createdPlan; // Return the created plan object
     } catch (error) {
-      await transaction.rollback(); // Rollback the transaction if any error occurs
-      console.error("Error generating or saving plan:", error);
+      // Catch block sẽ tự động rollback transaction nếu có lỗi xảy ra ở bất kỳ đâu trong try block
+      // Bao gồm cả lỗi kiểm tra plan active, lỗi fetch DB, lỗi gọi API, lỗi parse JSON, lỗi lưu DB.
+      await transaction.rollback();
+      console.error("Error during plan generation process:", error); // Log lỗi chi tiết hơn
       throw error; // Re-throw the error to be handled by the controller
     }
   },
