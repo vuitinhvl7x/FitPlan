@@ -24,7 +24,7 @@ const planController = {
     } catch (error) {
       console.error("Error in planController.generateTrainingPlan:", error);
       // Provide a more user-friendly error message
-      let statusCode = 500;
+      let statusCode = error.status || 500; // Default to 500;
       let message = "Error generating training plan.";
 
       if (error.message.includes("User or User Profile not found")) {
