@@ -7,7 +7,8 @@ import cookieParser from "cookie-parser";
 import { sequelize } from "./models/index.js";
 import authRouter from "./routers/authRouter.js";
 import userRouter from "./routers/userRouter.js";
-import profileRouter from "./routers/profileRouter.js"; // <-- Import profileRouter
+import profileRouter from "./routers/profileRouter.js";
+import exerciseRouter from "./routers/exerciseRouter.js";
 
 dotenv.config();
 
@@ -27,7 +28,8 @@ app.get("/", (req, res) => {
 // Sử dụng các Routers
 app.use("/api/auth", authRouter);
 app.use("/api/users", userRouter);
-app.use("/api/profiles", profileRouter); // <-- Sử dụng profileRouter
+app.use("/api/profiles", profileRouter);
+app.use("/api/exercises", exerciseRouter);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
