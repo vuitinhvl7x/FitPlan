@@ -1,22 +1,28 @@
 // server/src/validators/planValidators.js
-// import { body, param } from "express-validator";
+import { body, param } from "express-validator";
+import { TrainingPlan } from "../models/index.js"; // Import model to get ENUM values
 
-// TODO: Define validation rules for plan generation request body if needed.
-// For a simple "generate based on profile", the body might be empty,
-// or it might contain optional parameters like desired_duration_minutes, specific_focus_area, etc.
+// Get valid status values from the model definition
+const validStatuses = TrainingPlan.getAttributes().status.values;
 
-// export const generatePlanValidationRules = [
-//   // Example: Optional field for desired plan duration in minutes per session
-//   body('desired_duration_minutes')
-//     .optional()
-//     .isInt({ min: 15, max: 120 }) // Example range
-//     .withMessage('Desired duration must be an integer between 15 and 120 minutes'),
-//   // Example: Optional field for a specific focus area within the main goal
-//   body('specific_focus_area')
-//     .optional()
-//     .isString()
-//     .trim()
-//     .withMessage('Specific focus area must be a string'),
-// ];
+// Validation rules for generating a plan (if body parameters are added later)
+// export const generatePlanValidationRules = [ ... ];
 
-// TODO: Add validation rules for other plan routes (e.g., update plan)
+// Validation rules for getting a plan by ID (just validate the ID format)
+export const getPlanByIdRules = [
+  param("planId").isUUID().withMessage("Invalid training plan ID format"),
+];
+
+// Validation rules for updating plan status
+export const updatePlanStatusRules = [
+  param("planId").isUUID().withMessage("Invalid training plan ID format"),
+  body("status")
+    .notEmpty()
+    .withMessage("Status is required")
+    .isIn(validStatuses)
+    .withMessage(
+      `Invalid status value. Must be one of: ${validStatuses.join(", ")}`
+    ),
+];
+
+// TODO: Add validation rules for deleting a plan if that route is added

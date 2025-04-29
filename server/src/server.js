@@ -3,15 +3,15 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-import helmet from "helmet"; 
-import morgan from "morgan"; 
+import helmet from "helmet";
+import morgan from "morgan";
 
 import { sequelize } from "./models/index.js";
 import authRouter from "./routers/authRouter.js";
 import userRouter from "./routers/userRouter.js";
 import profileRouter from "./routers/profileRouter.js";
 import exerciseRouter from "./routers/exerciseRouter.js";
-import planRouter from "./routers/planRouter.js"; 
+import planRouter from "./routers/planRouter.js";
 
 dotenv.config();
 
@@ -35,7 +35,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/users", userRouter);
 app.use("/api/profiles", profileRouter);
 app.use("/api/exercises", exerciseRouter);
-app.use("/api/plans", planRouter); 
+app.use("/api/plans", planRouter);
 
 // Error handling middleware (should be the last middleware)
 app.use((err, req, res, next) => {
@@ -51,6 +51,7 @@ app.use((err, req, res, next) => {
 async function startServer() {
   try {
     // Ensure database connection is authenticated first
+    sequelize.sync();
     await sequelize.authenticate();
     console.log("Database connection established.");
 
