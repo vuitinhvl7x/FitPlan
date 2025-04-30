@@ -12,6 +12,7 @@ import userRouter from "./routers/userRouter.js";
 import profileRouter from "./routers/profileRouter.js";
 import exerciseRouter from "./routers/exerciseRouter.js";
 import planRouter from "./routers/planRouter.js";
+import workoutSessionRouter from "./routers/workoutSessionRouter.js";
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ app.use("/api/users", userRouter);
 app.use("/api/profiles", profileRouter);
 app.use("/api/exercises", exerciseRouter);
 app.use("/api/plans", planRouter);
+app.use("/api/workout-sessions", workoutSessionRouter);
 
 // Error handling middleware (should be the last middleware)
 app.use((err, req, res, next) => {
