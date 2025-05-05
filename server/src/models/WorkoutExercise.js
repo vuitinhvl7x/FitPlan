@@ -69,6 +69,13 @@ const WorkoutExercise = sequelize.define(
       type: DataTypes.TEXT,
       allowNull: true,
     },
+    // --- NEW FIELD: Status ---
+    status: {
+      type: DataTypes.ENUM("Planned", "Started", "Completed", "Skipped"),
+      allowNull: false,
+      defaultValue: "Planned",
+      comment: "Status of this exercise instance within the session",
+    },
     // Removed is_customized, rest_time from previous version
   },
   {
@@ -79,6 +86,7 @@ const WorkoutExercise = sequelize.define(
       // Add indexes for faster lookups
       { fields: ["workout_session_id"] },
       { fields: ["exercise_id"] },
+      { fields: ["status"] }, // Index status for easier querying
     ],
   }
 );
