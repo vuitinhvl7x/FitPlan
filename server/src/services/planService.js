@@ -9,6 +9,8 @@ import {
   ExerciseResult, // Make sure ExerciseResult is imported
 } from "../models/index.js";
 import { Op } from "sequelize";
+// --- Import the weekly update service ---
+import weeklyUpdateService from "./weeklyUpdateService.js";
 
 // --- Custom Error Classes (Optional but Recommended) ---
 class NotFoundError extends Error {
@@ -51,6 +53,7 @@ const planService = {
 
   /**
    * Checks if all sessions in a plan are completed or skipped and updates plan status.
+   * If the plan becomes Completed, triggers the generation of the next plan.
    * @param {string} planId The ID of the plan to check.
    * @param {object} [transaction] Optional Sequelize transaction object.
    * @returns {Promise<void>}
@@ -100,11 +103,19 @@ const planService = {
         await plan.save({ transaction }); // Pass transaction
         console.log(`Plan ${planId} status updated to Completed.`);
 
-        // TODO: Here you might trigger the weekly update task for this user
-        // Example: weeklyUpdateService.triggerUpdateForUser(plan.user_id);
-        // This would need careful design to avoid triggering multiple times.
+        // --- NEW LOGIC: Trigger next plan generation ---
+        console.log(
+          `Plan ${planId} completed. Triggering next plan generation for user ${plan.user_id}.`
+        );
+        // Call the new function in weeklyUpdateService
+        // Pass the transaction so plan generation happens atomically with plan completion
+        await weeklyUpdateService.generateNextPlanForUser(
+          plan.user_id,
+          transaction
+        );
+        // --- END NEW LOGIC ---
       }
-      // Else: Plan is still in progress, do nothing to its status
+      // Else: Plan is still in progress or planned, do nothing to its status
     } catch (error) {
       console.error(
         `Error in _checkAndUpdatePlanStatus for plan ${planId}:`,

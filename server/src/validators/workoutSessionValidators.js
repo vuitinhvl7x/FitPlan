@@ -1,5 +1,9 @@
 // src/validators/workoutSessionValidators.js
 import { body, param } from "express-validator";
+import { WorkoutSession } from "../models/index.js"; // Import model để lấy ENUM values
+
+// Lấy các giá trị ENUM từ model để validation
+const validSessionStatuses = WorkoutSession.getAttributes().status.values;
 
 export const getSessionByIdRules = [
   param("sessionId").isUUID().withMessage("Invalid workout session ID format"),
@@ -43,4 +47,16 @@ export const addExerciseToSessionRules = [
     .trim(),
 ];
 
-// TODO: Add rules for updating session notes/status if needed
+// --- NEW: Validation rules for updating session status ---
+export const updateSessionStatusRules = [
+  param("sessionId").isUUID().withMessage("Invalid workout session ID format"),
+  body("status")
+    .notEmpty()
+    .withMessage("Status is required")
+    // Chỉ cho phép cập nhật sang Completed hoặc Skipped thủ công
+    .isIn(["Completed", "Skipped"]) // <-- Restrict allowed manual statuses
+    .withMessage(`Invalid status value. Must be one of: Completed, Skipped`),
+];
+// --- END NEW ---
+
+// TODO: Add rules for updating session notes if needed

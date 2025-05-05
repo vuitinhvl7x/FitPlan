@@ -6,7 +6,8 @@ import handleValidationErrors from "../middlewares/validationMiddleware.js";
 import {
   getSessionByIdRules,
   addExerciseToSessionRules,
-} from "../validators/workoutSessionValidators.js"; // Create this file
+  updateSessionStatusRules, // <-- Import new validation rules
+} from "../validators/workoutSessionValidators.js";
 
 const router = express.Router();
 
@@ -30,6 +31,16 @@ router.post(
   workoutSessionController.addExerciseToSession
 );
 
-// TODO: Add routes for updating session notes/status if needed
+// --- NEW: PUT /api/workout-sessions/:sessionId/status - Update session status manually ---
+router.put(
+  "/:sessionId/status",
+  authenticateToken,
+  updateSessionStatusRules, // Validate sessionId param and status in body
+  handleValidationErrors,
+  workoutSessionController.updateSessionStatus
+);
+// --- END NEW ---
+
+// TODO: Add routes for updating session notes if needed
 
 export default router;

@@ -126,6 +126,7 @@ const exerciseResultService = {
       });
 
       const plannedSets = workoutExercise.sets_planned;
+      let statusUpdatedToCompleted = false; // Flag to check if status became Completed
 
       if (workoutExercise.status === "Planned") {
         // If it was planned, logging the first result starts it
@@ -137,31 +138,41 @@ const exerciseResultService = {
       }
 
       // Check if all planned sets are logged (only if sets_planned is defined and > 0)
+      // Also check if status is not already Completed or Skipped
       if (
         plannedSets !== null &&
         plannedSets > 0 &&
         loggedResultsCount >= plannedSets &&
-        workoutExercise.status !== "Completed" // Avoid unnecessary updates
+        workoutExercise.status !== "Completed" &&
+        workoutExercise.status !== "Skipped" // Ensure we don't re-complete/re-skip
       ) {
         workoutExercise.status = "Completed";
         await workoutExercise.save({ transaction });
+        statusUpdatedToCompleted = true; // Set flag
         console.log(
           `WorkoutExercise ${workoutExerciseId} status updated to Completed (all sets logged).`
         );
       }
       // Note: If sets_planned is null or 0, the status won't automatically become 'Completed' this way.
-      // A separate mechanism (e.g., user manually marking as complete) would be needed.
+      // A separate mechanism (e.g., user manually marking as complete/skipped) would be needed for those.
 
       // 5. Trigger cascading status update check for the parent session
-      // We need the session ID from the workoutExercise instance
-      const sessionId = workoutExercise.workout_session_id;
-      // Call the helper function in workoutSessionService
-      // Pass the transaction so the check happens within the same transaction
-      await workoutSessionService._checkAndUpdateSessionStatus(
-        sessionId,
-        transaction
-      );
-      console.log(`Triggered session status check for session ${sessionId}.`);
+      // ONLY if the workout exercise status was just updated to Completed
+      if (statusUpdatedToCompleted) {
+        // <-- Check the flag
+        const sessionId = workoutExercise.workout_session_id;
+        await workoutSessionService._checkAndUpdateSessionStatus(
+          sessionId,
+          transaction
+        );
+        console.log(
+          `Triggered session status check for session ${sessionId} because WorkoutExercise ${workoutExerciseId} completed.`
+        );
+      } else {
+        console.log(
+          `WorkoutExercise ${workoutExerciseId} did not complete. Skipping session status check.`
+        );
+      }
 
       await transaction.commit(); // Commit the transaction
       console.log(
