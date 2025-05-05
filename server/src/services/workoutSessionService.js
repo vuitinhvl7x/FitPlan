@@ -5,8 +5,10 @@ import {
   WorkoutExercise,
   TrainingPlan, // Needed for ownership check
   Exercise, // Needed for includes and validation
+  ExerciseResult, // Make sure ExerciseResult is imported
 } from "../models/index.js";
 import { Op } from "sequelize";
+import { planService } from "./planService.js"; // Import the service for cascading
 
 // --- Re-use or re-define Custom Error Classes ---
 class NotFoundError extends Error {
@@ -54,6 +56,76 @@ const workoutSessionService = {
   },
 
   /**
+   * Checks if all exercises in a session are completed or skipped and updates session status.
+   * @param {string} sessionId The ID of the session to check.
+   * @param {object} [transaction] Optional Sequelize transaction object.
+   * @returns {Promise<void>}
+   */
+  _checkAndUpdateSessionStatus: async (sessionId, transaction) => {
+    try {
+      const session = await WorkoutSession.findByPk(sessionId, {
+        include: [
+          {
+            model: WorkoutExercise,
+            as: "workoutExercises",
+            attributes: ["id", "status"], // Only need ID and status
+          },
+        ],
+        transaction, // Pass transaction
+      });
+
+      if (!session) {
+        console.warn(
+          `_checkAndUpdateSessionStatus: Session ${sessionId} not found.`
+        );
+        return; // Session might have been deleted
+      }
+
+      // If session is already completed or skipped, no need to check exercises
+      if (session.status === "Completed" || session.status === "Skipped") {
+        return;
+      }
+
+      const totalExercises = session.workoutExercises.length;
+      if (totalExercises === 0) {
+        // If a session has no exercises, maybe it's a rest day or planned cardio outside the app.
+        // Decide how to handle this. For now, let's not auto-complete if empty.
+        return;
+      }
+
+      const completedOrSkippedCount = session.workoutExercises.filter(
+        (ex) => ex.status === "Completed" || ex.status === "Skipped"
+      ).length;
+
+      console.log(
+        `Session ${sessionId}: Total exercises: ${totalExercises}, Completed/Skipped: ${completedOrSkippedCount}`
+      );
+
+      if (completedOrSkippedCount === totalExercises) {
+        // All exercises are done or skipped, mark session as Completed
+        session.status = "Completed";
+        await session.save({ transaction }); // Pass transaction
+        console.log(`Session ${sessionId} status updated to Completed.`);
+
+        // Trigger cascading status update check for the parent plan
+        const planId = session.training_plan_id;
+        // Call the helper function in planService
+        await planService._checkAndUpdatePlanStatus(planId, transaction); // Pass transaction
+        console.log(`Triggered plan status check for plan ${planId}.`);
+      }
+      // Else: Session is still in progress or planned, do nothing to its status
+    } catch (error) {
+      console.error(
+        `Error in _checkAndUpdateSessionStatus for session ${sessionId}:`,
+        error
+      );
+      // Do NOT re-throw here, as this is a background check function.
+      // Log the error and let the main process continue.
+      // The transaction will be handled by the caller (e.g., logResult).
+    }
+  },
+
+  /**
    * Gets a specific workout session by ID, including its exercises.
    * Ensures the session belongs to the requesting user.
    * @param {string} sessionId The ID of the session.
@@ -82,6 +154,13 @@ const workoutSessionService = {
               {
                 model: Exercise,
                 as: "exercise", // Include details of the base exercise
+              },
+              // Include ExerciseResults for each WorkoutExercise
+              {
+                model: ExerciseResult,
+                as: "results",
+                order: [["set_number", "ASC"]], // Order results by set number
+                required: false, // <--- ADD THIS LINE
               },
             ],
           },
@@ -163,6 +242,7 @@ const workoutSessionService = {
           duration_planned: exerciseData.duration_planned,
           rest_period: exerciseData.rest_period,
           notes: exerciseData.notes,
+          status: "Planned", // Default status for new exercise
         },
         { transaction }
       );
@@ -183,19 +263,19 @@ const workoutSessionService = {
 
   // --- Helper for shifting orders (Example - More complex logic needed for robust implementation) ---
   /*
-     _shiftOrders: async (sessionId, startingOrder, shiftAmount, transaction) => {
-         await WorkoutExercise.update(
-             { order: sequelize.literal(`"order" + ${shiftAmount}`) },
-             {
-                 where: {
-                     workout_session_id: sessionId,
-                     order: { [Op.gte]: startingOrder }
-                 },
-                 transaction
-             }
-         );
-     }
-     */
+   _shiftOrders: async (sessionId, startingOrder, shiftAmount, transaction) => {
+       await WorkoutExercise.update(
+           { order: sequelize.literal(`"order" + ${shiftAmount}`) },
+           {
+               where: {
+                   workout_session_id: sessionId,
+                   order: { [Op.gte]: startingOrder }
+               },
+               transaction
+           }
+       );
+   }
+   */
   // --- End Helper ---
 
   // TODO: Add other service methods like updateSessionNotes, updateSessionStatus

@@ -6,6 +6,7 @@ import {
   WorkoutExercise,
   Exercise, // Needed for includes
   User, // Needed for includes
+  ExerciseResult, // Make sure ExerciseResult is imported
 } from "../models/index.js";
 import { Op } from "sequelize";
 
@@ -46,6 +47,72 @@ const planService = {
       throw new ForbiddenError();
     }
     return plan;
+  },
+
+  /**
+   * Checks if all sessions in a plan are completed or skipped and updates plan status.
+   * @param {string} planId The ID of the plan to check.
+   * @param {object} [transaction] Optional Sequelize transaction object.
+   * @returns {Promise<void>}
+   */
+  _checkAndUpdatePlanStatus: async (planId, transaction) => {
+    try {
+      const plan = await TrainingPlan.findByPk(planId, {
+        include: [
+          {
+            model: WorkoutSession,
+            as: "sessions",
+            attributes: ["id", "status"], // Only need ID and status
+          },
+        ],
+        transaction, // Pass transaction
+      });
+
+      if (!plan) {
+        console.warn(`_checkAndUpdatePlanStatus: Plan ${planId} not found.`);
+        return; // Plan might have been deleted
+      }
+
+      // If plan is already completed, archived, or paused, no need to check sessions
+      if (plan.status !== "Active") {
+        return;
+      }
+
+      const totalSessions = plan.sessions.length;
+      if (totalSessions === 0) {
+        // Decide how to handle plans with no sessions. Maybe auto-complete?
+        // For now, let's not auto-complete if empty.
+        return;
+      }
+
+      const completedOrSkippedCount = plan.sessions.filter(
+        (session) =>
+          session.status === "Completed" || session.status === "Skipped"
+      ).length;
+
+      console.log(
+        `Plan ${planId}: Total sessions: ${totalSessions}, Completed/Skipped: ${completedOrSkippedCount}`
+      );
+
+      if (completedOrSkippedCount === totalSessions) {
+        // All sessions are done or skipped, mark plan as Completed
+        plan.status = "Completed";
+        await plan.save({ transaction }); // Pass transaction
+        console.log(`Plan ${planId} status updated to Completed.`);
+
+        // TODO: Here you might trigger the weekly update task for this user
+        // Example: weeklyUpdateService.triggerUpdateForUser(plan.user_id);
+        // This would need careful design to avoid triggering multiple times.
+      }
+      // Else: Plan is still in progress, do nothing to its status
+    } catch (error) {
+      console.error(
+        `Error in _checkAndUpdatePlanStatus for plan ${planId}:`,
+        error
+      );
+      // Do NOT re-throw here. Log the error and let the main process continue.
+      // The transaction will be handled by the caller (e.g., _checkAndUpdateSessionStatus).
+    }
   },
 
   /**
@@ -101,12 +168,19 @@ const planService = {
               {
                 model: WorkoutExercise,
                 as: "workoutExercises",
-                separate: true,
+                separate: true, // Separate query for workout exercises *per session*
                 order: [["order", "ASC"]], // Order exercises within session
                 include: [
                   {
                     model: Exercise,
                     as: "exercise", // Include details of the base exercise
+                  },
+                  // Include ExerciseResults for each WorkoutExercise
+                  {
+                    model: ExerciseResult,
+                    as: "results",
+                    order: [["set_number", "ASC"]], // Order results by set number
+                    required: false, // <--- ADD THIS LINE
                   },
                 ],
               },
