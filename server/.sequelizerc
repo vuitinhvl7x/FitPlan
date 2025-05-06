@@ -1,0 +1,22 @@
+// .sequelizerc
+const path = require("path");
+// --- Load environment variables directly and early ---
+// Ensure the path is correct relative to the project root
+require("dotenv").config({ path: path.join(__dirname, ".env") });
+// --- END dotenv config ---
+
+// Define the Sequelize CLI path configuration object ONLY
+// The CLI will read database config from config/config.json by default
+module.exports = {
+  // --- REMOVE the 'config' key and its value from here ---
+  // 'config': {
+  //   development: { /* ... */ },
+  //   test: { /* ... */ },
+  //   production: { /* ... */ }
+  // },
+  // --- END REMOVE ---
+
+  "models-path": path.resolve(__dirname, "src", "models"),
+  "migrations-path": path.resolve(__dirname, "migrations"),
+  "seeders-path": path.resolve(__dirname, "seeders"),
+};

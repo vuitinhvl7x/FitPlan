@@ -59,7 +59,7 @@ app.use((err, req, res, next) => {
 async function startServer() {
   try {
     // Ensure database connection is authenticated first
-    sequelize.sync();
+    // sequelize.sync();
     await sequelize.authenticate();
     console.log("Database connection established.");
 

@@ -1,6 +1,6 @@
 // src/models/index.js
-import sequelize from "../providers/db.js"; // Your configured Sequelize instance
-import { DataTypes } from "sequelize"; // Import DataTypes if needed elsewhere
+import sequelize from "../providers/db.js";
+import { DataTypes } from "sequelize";
 
 // Import all models
 import User from "./User.js";
@@ -11,12 +11,13 @@ import Exercise from "./Exercise.js";
 import WorkoutExercise from "./WorkoutExercise.js";
 import ExerciseResult from "./ExerciseResult.js";
 import UserDailyCondition from "./UserDailyCondition.js";
+import UserMeasurement from "./UserMeasurement.js";
 
 // --- Define Associations ---
 
 // User <-> UserProfile (One-to-One)
 User.hasOne(UserProfile, {
-  foreignKey: "user_id", // snake_case due to underscored: true in UserProfile
+  foreignKey: "user_id",
   as: "profile",
   onDelete: "CASCADE",
 });
@@ -24,7 +25,7 @@ UserProfile.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
 // User <-> TrainingPlan (One-to-Many)
 User.hasMany(TrainingPlan, {
-  foreignKey: "user_id", // snake_case
+  foreignKey: "user_id",
   as: "trainingPlans",
   onDelete: "CASCADE",
 });
@@ -32,8 +33,8 @@ TrainingPlan.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
 // TrainingPlan <-> WorkoutSession (One-to-Many)
 TrainingPlan.hasMany(WorkoutSession, {
-  foreignKey: "training_plan_id", // snake_case
-  as: "sessions", // Changed alias for clarity
+  foreignKey: "training_plan_id",
+  as: "sessions",
   onDelete: "CASCADE",
 });
 WorkoutSession.belongsTo(TrainingPlan, {
@@ -44,22 +45,21 @@ WorkoutSession.belongsTo(TrainingPlan, {
 // WorkoutSession <-> Exercise (Many-to-Many through WorkoutExercise)
 WorkoutSession.belongsToMany(Exercise, {
   through: WorkoutExercise,
-  foreignKey: "workout_session_id", // Key in the join table referencing WorkoutSession
-  otherKey: "exercise_id", // Key in the join table referencing Exercise
-  as: "exercises", // Alias to get exercises directly from a session
+  foreignKey: "workout_session_id",
+  otherKey: "exercise_id",
+  as: "exercises",
 });
 Exercise.belongsToMany(WorkoutSession, {
   through: WorkoutExercise,
-  foreignKey: "exercise_id", // Key in the join table referencing Exercise
-  otherKey: "workout_session_id", // Key in the join table referencing WorkoutSession
-  as: "workoutSessions", // Alias to get sessions directly from an exercise
+  foreignKey: "exercise_id",
+  otherKey: "workout_session_id",
+  as: "workoutSessions",
 });
 
 // Explicit associations FOR the join table WorkoutExercise
-// WorkoutSession -> WorkoutExercise (One-to-Many)
 WorkoutSession.hasMany(WorkoutExercise, {
   foreignKey: "workout_session_id",
-  as: "workoutExercises", // Alias to get the join table entries from a session
+  as: "workoutExercises",
   onDelete: "CASCADE",
 });
 WorkoutExercise.belongsTo(WorkoutSession, {
@@ -67,10 +67,9 @@ WorkoutExercise.belongsTo(WorkoutSession, {
   as: "workoutSession",
 });
 
-// Exercise -> WorkoutExercise (One-to-Many)
 Exercise.hasMany(WorkoutExercise, {
   foreignKey: "exercise_id",
-  as: "workoutInstances", // Alias to get the join table entries from an exercise
+  as: "workoutInstances",
   onDelete: "CASCADE",
 });
 WorkoutExercise.belongsTo(Exercise, {
@@ -79,10 +78,9 @@ WorkoutExercise.belongsTo(Exercise, {
 });
 
 // WorkoutExercise <-> ExerciseResult (One-to-Many)
-// One specific instance of an exercise in a workout can have multiple results (one per set)
 WorkoutExercise.hasMany(ExerciseResult, {
-  foreignKey: "workout_exercise_id", // snake_case
-  as: "results", // Changed alias
+  foreignKey: "workout_exercise_id",
+  as: "results",
   onDelete: "CASCADE",
 });
 ExerciseResult.belongsTo(WorkoutExercise, {
@@ -91,9 +89,8 @@ ExerciseResult.belongsTo(WorkoutExercise, {
 });
 
 // User <-> ExerciseResult (One-to-Many - Denormalized)
-// Useful for quickly getting all results for a user without going through plans/sessions
 User.hasMany(ExerciseResult, {
-  foreignKey: "user_id", // snake_case
+  foreignKey: "user_id",
   as: "exerciseResults",
   onDelete: "CASCADE",
 });
@@ -101,16 +98,24 @@ ExerciseResult.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
 // User <-> UserDailyCondition (One-to-Many)
 User.hasMany(UserDailyCondition, {
-  foreignKey: "user_id", // snake_case
+  foreignKey: "user_id",
   as: "dailyConditions",
   onDelete: "CASCADE",
 });
 UserDailyCondition.belongsTo(User, { foreignKey: "user_id", as: "user" });
 
+// User <-> UserMeasurement (One-to-Many)
+User.hasMany(UserMeasurement, {
+  foreignKey: "user_id",
+  as: "measurements",
+  onDelete: "CASCADE",
+});
+UserMeasurement.belongsTo(User, { foreignKey: "user_id", as: "user" });
+
 // --- Export Models and Sequelize Instance ---
 export {
-  sequelize, // Export the instance for potential direct use (e.g., transactions)
-  DataTypes, // Export DataTypes for convenience if needed elsewhere
+  sequelize,
+  DataTypes,
   User,
   UserProfile,
   TrainingPlan,
@@ -119,19 +124,5 @@ export {
   WorkoutExercise,
   ExerciseResult,
   UserDailyCondition,
+  UserMeasurement, // --- NEW EXPORT ---
 };
-
-// Optional: You can also export db object like before if preferred
-// const db = {
-//   sequelize,
-//   DataTypes,
-//   User,
-//   UserProfile,
-//   TrainingPlan,
-//   WorkoutSession,
-//   Exercise,
-//   WorkoutExercise,
-//   ExerciseResult,
-//   UserDailyCondition,
-// };
-// export default db;
