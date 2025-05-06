@@ -13,23 +13,27 @@ const planController = {
    * POST /api/plans/generate
    */
   generateTrainingPlan: async (req, res) => {
-    // ... (existing code remains the same) ...
     const userId = req.user.id;
 
     try {
       console.log(`Received request to generate plan for user ID: ${userId}`);
-      // Check for active plan *before* calling the generator service
+
+      // --- MODIFIED LOGIC: Check for ANY active plan ---
       const existingActivePlan = await planService
-        .getUserPlans(userId)
-        .then((plans) => plans.find((p) => p.status === "Active")); // Simple check here, service has more robust one
+        .getUserPlans(userId) // Get all user plans
+        .then((plans) => plans.find((p) => p.status === "Active")); // Find if any is Active
 
       if (existingActivePlan) {
+        // If an Active plan exists, block generation
         return res.status(400).json({
           message:
             "You already have an active training plan. Please complete or archive it before generating a new one.",
+          activePlanId: existingActivePlan.id, // Optional: return active plan ID
         });
       }
+      // --- END MODIFIED LOGIC ---
 
+      // If no active plan is found, proceed to generate
       const createdPlan = await planGeneratorService.generatePlan(userId);
 
       res.status(201).json({
@@ -58,13 +62,8 @@ const planController = {
       } else if (error.message.includes("invalid or empty plan structure")) {
         statusCode = 500;
         message = `AI returned an invalid plan structure: ${error.message}`;
-      } else if (
-        error.message.includes("already have an active training plan")
-      ) {
-        // Catch the specific error thrown by the service or the check above
-        statusCode = 400; // Bad Request or 409 Conflict
-        message = error.message;
       }
+      // The "already have an active plan" error is now handled explicitly above
 
       res.status(statusCode).json({ message, error: error.message });
     }

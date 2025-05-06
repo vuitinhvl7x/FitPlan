@@ -91,28 +91,88 @@ const planGeneratorService = {
 
       const userProfile = user.profile;
 
-      // --- LOGIC KIỂM TRA PLAN ACTIVE ĐÃ ĐƯỢC SỬA ---
+      // --- MODIFIED LOGIC: Check for ANY active plan ---
       const existingActivePlan = await TrainingPlan.findOne({
         where: {
           user_id: userId,
-          status: "Active",
+          status: "Active", // Still check ONLY for Active plans here
         },
         transaction, // Sử dụng transaction
       });
 
       if (existingActivePlan) {
-        // KHÔNG rollback ở đây. Chỉ ném lỗi.
-        console.warn(
-          `User ${userId} already has an active plan (ID: ${existingActivePlan.id}). Generation request blocked.`
-        );
-        // Ném một lỗi cụ thể để controller có thể nhận biết và trả về status code 400/409
+        // If an Active plan exists, block generation
+        await transaction.rollback(); // Rollback the transaction
         const activePlanError = new Error(
           "You already have an active training plan. Please complete or archive it before generating a new one."
         );
-        activePlanError.status = 400; // Gợi ý status code cho controller
+        activePlanError.status = 400; // Suggest status code for controller
         throw activePlanError;
       }
-      // --- KẾT THÚC LOGIC KIỂM TRA ---
+      // --- END MODIFIED LOGIC ---
+
+      // --- NEW LOGIC: Find the most recently completed/archived plan for analysis ---
+      const lastPlan = await TrainingPlan.findOne({
+        where: {
+          user_id: userId,
+          status: { [Op.in]: ["Completed", "Archived"] }, // Look for completed or archived plans
+        },
+        order: [["end_date", "DESC"]], // Get the most recent one
+        transaction,
+      });
+
+      let analysisSummary = null;
+      if (lastPlan) {
+        console.log(
+          `Found last completed/archived plan (${lastPlan.id}) for analysis.`
+        );
+        // Fetch data for analysis from the last plan's period
+        const dataStartDate = lastPlan.start_date;
+        const dataEndDate = lastPlan.end_date;
+
+        const sessionsWithResults = await WorkoutSession.findAll({
+          where: { training_plan_id: lastPlan.id },
+          include: [
+            {
+              model: WorkoutExercise,
+              as: "workoutExercises",
+              include: [
+                { model: Exercise, as: "exercise" },
+                { model: ExerciseResult, as: "results" },
+              ],
+            },
+          ],
+          transaction,
+        });
+
+        const dailyConditions = await UserDailyCondition.findAll({
+          where: {
+            user_id: user.id,
+            date: {
+              [Op.between]: [dataStartDate, dataEndDate],
+            },
+          },
+          transaction,
+        });
+
+        analysisSummary = weeklyUpdateService._analyzeUserData(
+          user.profile,
+          sessionsWithResults,
+          dailyConditions
+        );
+        console.log("Analysis Summary for new plan:", analysisSummary);
+      } else {
+        console.log(
+          "No previous completed/archived plan found for analysis. Generating initial plan."
+        );
+        // Provide a default/empty analysis summary if no previous plan exists
+        analysisSummary = {
+          formattedPerformance: "No previous performance data.",
+          formattedCondition: "No previous condition data.",
+          rawData: {}, // Empty raw data
+        };
+      }
+      // --- END NEW LOGIC ---
 
       // 2. Determine available equipment based on training location
       const location = userProfile.training_location
@@ -141,6 +201,15 @@ const planGeneratorService = {
           //    [Op.lte]: userProfile.experience === 'Beginner' ? 2 : userProfile.experience === 'Intermediate' ? 4 : 5
           // }
         },
+        attributes: [
+          // Select specific attributes
+          "id",
+          "name",
+          "target_muscle",
+          "body_part",
+          "equipment",
+          "secondary_muscles",
+        ],
         transaction, // Use transaction
       });
 
@@ -156,7 +225,7 @@ const planGeneratorService = {
         `Found ${availableExercises.length} exercises matching criteria.`
       );
 
-      // 4. Create Exercise Name -> ID Lookup Map
+      // 4. Create Exercise Name -> ID Lookup Map and list for prompt
       const exerciseLookupMap = new Map();
       const exerciseListForPrompt = availableExercises
         .map((ex) => {
@@ -181,8 +250,12 @@ const planGeneratorService = {
         userProfile.activity_level
       ] || { min: 3, max: 4 }; // Default if activity level is unexpected
 
+      // Determine start date for the new plan - should be tomorrow
+      const nextWeekStartDate = addDays(new Date(), 1);
+      const nextWeekEndDate = addDays(nextWeekStartDate, 6); // 1 week plan
+
       const prompt = `
-  Generate a 1-week personalized training plan in JSON format.
+  Generate a 1-week personalized training plan in JSON format for the upcoming week.
   
   User Profile:
   - Goal: ${userProfile.goals}
@@ -199,8 +272,16 @@ const planGeneratorService = {
   - Height: ${userProfile.height || "N/A"} cm
   - Wants Pre-Workout Info: ${userProfile.wants_pre_workout_info ? "Yes" : "No"}
   
-  Plan Requirements:
-  - Duration: 1 week, starting from today.
+  ${
+    analysisSummary
+      ? `Previous Training Period Analysis:\n--- Performance Summary ---\n${analysisSummary.formattedPerformance}\n--- Daily Condition Summary ---\n${analysisSummary.formattedCondition}`
+      : "No previous training data available for analysis."
+  }
+  
+  Plan Requirements for the Upcoming Week:
+  - Duration: 1 week, starting from tomorrow (${formatDateForPrompt(
+    nextWeekStartDate
+  )}).
   - Frequency: Suggest a training frequency appropriate for the user's activity level (${
     userProfile.activity_level
   }), ideally scheduling between ${suggestedFrequency.min} and ${
@@ -210,6 +291,12 @@ const planGeneratorService = {
   - Focus: Align the plan structure, exercise selection, sets, reps, and rest periods with the user's primary goal (${
     userProfile.goals
   }) and experience level (${userProfile.experience}).
+  - **Adaptation:** If previous data is available, critically analyze the "Previous Training Period Analysis" and adjust the plan accordingly.
+    - If performance was strong on an exercise, consider slightly increasing weight, reps, or sets.
+    - If performance was weak or an exercise was skipped often, consider reducing weight, reps, sets, or suggesting an easier variation or alternative exercise from the list.
+    - If daily conditions (energy, stress, sleep, soreness) were poor, suggest more rest days, lower intensity sessions, or focus on recovery activities.
+    - If daily conditions were good, the user might handle higher volume/intensity.
+    - If there's no previous data, generate a standard plan based on profile.
   - Exercises: ONLY use exercises from the list provided below. Provide the EXACT name from the list if possible. If an exact match isn't suitable, suggest a very common variation that is likely to be in the list or can be easily mapped. If a suitable exercise cannot be found for a planned muscle group/body part from the list, you can suggest "Rest" or "Cardio (choose activity)".
   - Pre-Workout Notes: If the user wants pre-workout info, include a brief note or suggestion at the beginning of each session's notes.
   - Output Format: JSON object.
@@ -219,8 +306,8 @@ const planGeneratorService = {
   
   JSON Output Structure:
   {
-    "planName": "string", // A suggested name for the plan (e.g., "Beginner Weight Loss Plan")
-    "description": "string", // A brief description of the plan
+    "planName": "string", // A suggested name for the training plan (e.g., "Week 2: Muscle Gain Adjusted")
+    "description": "string", // A brief description of the plan, mentioning the adjustments made based on last week (if data available)
     "sessions": [
       {
         "day": "string", // e.g., "Monday", "Tuesday", etc.
@@ -237,7 +324,7 @@ const planGeneratorService = {
           }
           // ... more exercises for this session
         ],
-        "notes": "string | null" // General notes for the session (e.g., warm-up, cool-down, pre-workout info)
+        "notes": "string | null" // General notes for the session (e.g., warm-up, cool-down, pre-workout info, summary of session focus)
       }
       // ... more sessions for the week (7 sessions total for a 1-week plan)
     ]
@@ -249,9 +336,7 @@ const planGeneratorService = {
       console.log("Prompt constructed. Calling Gemini...");
 
       // 6. Call Gemini API
-      // Lưu ý: Gọi API ngoài transaction nếu API call mất nhiều thời gian
-      // hoặc nếu bạn muốn transaction chỉ bao gồm các thao tác DB.
-      // Tuy nhiên, để đơn giản, ta vẫn giữ trong try block.
+      // Lưu ý: Gọi API ngoài transaction scope.
       const planJson = await geminiService.generateJson(prompt);
 
       // 7. Validate and Save Plan to Database
@@ -266,9 +351,8 @@ const planGeneratorService = {
         throw new Error("Gemini returned an invalid or empty plan structure.");
       }
 
-      const startDate = new Date(); // Plan starts today
-      const endDate = new Date();
-      endDate.setDate(startDate.getDate() + 6); // 1 week plan
+      // Determine start date for the new plan - should be tomorrow
+      // Already calculated as nextWeekStartDate above
 
       const createdPlan = await TrainingPlan.create(
         {
@@ -276,8 +360,8 @@ const planGeneratorService = {
           name: planJson.planName || `${userProfile.goals} Plan`, // Use generated name or default
           description:
             planJson.description || `1-week plan for ${userProfile.goals}`,
-          start_date: startDate,
-          end_date: endDate,
+          start_date: nextWeekStartDate,
+          end_date: nextWeekEndDate,
           status: "Active", // Đặt trạng thái là Active
           is_customized: false, // Generated plans are not customized initially
         },
@@ -298,8 +382,7 @@ const planGeneratorService = {
         "Saturday",
       ];
       for (let i = 0; i < 7; i++) {
-        const currentDate = new Date(startDate);
-        currentDate.setDate(startDate.getDate() + i);
+        const currentDate = addDays(nextWeekStartDate, i);
         const dayName = daysOfWeek[currentDate.getDay()];
         dayMap[dayName.toLowerCase()] = format(currentDate, "yyyy-MM-dd"); // Store as YYYY-MM-DD string
       }
@@ -374,6 +457,7 @@ const planGeneratorService = {
                   typeof exerciseData.notes === "string"
                     ? exerciseData.notes
                     : null,
+                status: "Planned", // Default status for new exercises
               },
               { transaction }
             );
@@ -398,5 +482,64 @@ const planGeneratorService = {
 
   // TODO: Add other plan-related services here (e.g., getPlan, updatePlan, deletePlan)
 };
+
+// Re-use or define equipment mapping helper
+const _getEquipmentForLocation = (location) => {
+  const equipmentMapping = {
+    home: [
+      "body weight",
+      "dumbbell",
+      "resistance band",
+      "kettlebell",
+      "medicine ball",
+      "stability ball",
+      "band",
+      "assisted",
+      "none",
+    ],
+    gym: [
+      "barbell",
+      "cable",
+      "leverage machine",
+      "olympic barbell",
+      "smith machine",
+      "trap bar",
+      "weighted",
+      "assisted",
+      "dumbbell",
+      "kettlebell",
+      "medicine ball",
+      "resistance band",
+      "stability ball",
+      "ez barbell",
+      "hammer",
+      "roller",
+      "rope",
+      "tire",
+      "wheel roller",
+      "elliptical machine",
+      "skierg machine",
+      "stationary bike",
+      "stepmill machine",
+      "upper body ergometer",
+      "cardio machine",
+    ],
+    outdoor: ["body weight", "assisted", "band", "resistance band", "none"],
+  };
+  return equipmentMapping[location.toLowerCase()] || equipmentMapping["home"];
+};
+
+// Helper function to format date for prompt
+const formatDateForPrompt = (date) => format(date, "yyyy-MM-dd");
+
+// Import the analysis function from weeklyUpdateService
+import weeklyUpdateService from "./weeklyUpdateService.js"; // <-- Import here
+
+// Add the analysis function directly or import it
+// For simplicity and avoiding circular dependencies if weeklyUpdateService
+// also imports planGeneratorService, it might be better to define
+// the analysis logic here or in a shared utility file.
+// Let's import it for now, assuming no circular dependency issues.
+// If issues arise, copy the _analyzeUserData and _constructGeminiPrompt logic here.
 
 export default planGeneratorService;
