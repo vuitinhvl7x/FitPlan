@@ -16,6 +16,7 @@ import workoutSessionRouter from "./routers/workoutSessionRouter.js";
 import workoutExerciseRouter from "./routers/workoutExerciseRouter.js";
 import exerciseResultRouter from "./routers/exerciseResultRouter.js";
 import userDailyConditionRouter from "./routers/userDailyConditionRouter.js";
+import statsRouter from "./routers/statsRouter.js";
 
 dotenv.config();
 
@@ -44,6 +45,7 @@ app.use("/api/workout-sessions", workoutSessionRouter);
 app.use("/api/workout-exercises", workoutExerciseRouter);
 app.use("/api/exercise-results", exerciseResultRouter);
 app.use("/api/daily-conditions", userDailyConditionRouter);
+app.use("/api/stats", statsRouter);
 
 // Error handling middleware (should be the last middleware)
 app.use((err, req, res, next) => {
